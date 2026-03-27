@@ -17,9 +17,9 @@ defaultValues:
 versions:
   - version: "v1.19.2"
     chartVersion: "v1.19.2"
-    minK8sVersion: "1.27"
-    maxK8sVersion: "1.32"
+    minK8sVersion: "1.31"
+    maxK8sVersion: "1.35"
   - version: "v1.16.2"
     chartVersion: "v1.16.2"
     minK8sVersion: "1.25"
-    maxK8sVersion: "1.31"
+    maxK8sVersion: "1.32"

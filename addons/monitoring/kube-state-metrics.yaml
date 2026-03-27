@@ -10,4 +10,4 @@ versions:
   - version: "6.4.1"
     chartVersion: "6.4.1"
     minK8sVersion: "1.23"
-    maxK8sVersion: "1.32"
+    maxK8sVersion: "1.33"

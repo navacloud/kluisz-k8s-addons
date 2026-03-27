@@ -6,6 +6,13 @@ on:
     paths:
       - 'addons/**/*.yaml'
   workflow_dispatch:
+    inputs:
+      sync_all:
+        description: 'Build and push all addon versions'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true']
 
 permissions:
   contents: read
@@ -28,67 +35,97 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # need HEAD~1 to diff against
+          fetch-depth: 0  # full history needed for diff against before SHA
 
       - uses: mikefarah/yq@v4.44.3
 
       - name: Detect modified addons with new chartVersions
         id: detect
+        env:
+          EVENT_NAME:  ${{ github.event_name }}
+          BEFORE_SHA:  ${{ github.event.before }}
         run: |
-          changed=$(git diff --name-only HEAD~1 HEAD -- 'addons/**/*.yaml' || true)
-
-          if [ -z "$changed" ]; then
-            echo "No addon files changed."
-            echo 'matrix=[]' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           items='[]'
 
-          for file in $changed; do
-            [ -f "$file" ] || continue
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # ── Manual trigger: include every version in every addon file ──────
+            echo "workflow_dispatch: syncing all addon versions"
+            while IFS= read -r file; do
+              [ -f "$file" ] || continue
 
-            name=$(yq '.name' "$file")
-            chart=$(yq '.chart' "$file")
-            original_repo=$(yq '.originalRepo // ""' "$file")
+              name=$(yq '.name' "$file")
+              chart=$(yq '.chart' "$file")
+              original_repo=$(yq '.originalRepo // ""' "$file")
 
-            # Internal kluisz charts have no upstream repo — their own CI handles publishing.
-            if [ -z "$original_repo" ] || [ "$original_repo" = '""' ]; then
-              echo "Skipping $name — internal chart, no originalRepo"
-              continue
-            fi
+              if [ -z "$original_repo" ] || [ "$original_repo" = '""' ]; then
+                echo "Skipping $name — internal chart, no originalRepo"
+                continue
+              fi
 
-            # Collect versions present in the current commit
-            mapfile -t current_versions < <(yq '.versions[].chartVersion' "$file")
-
-            # Collect versions from the previous commit (empty if file is brand-new)
-            mapfile -t prev_versions < <(
-              git show HEAD~1:"$file" 2>/dev/null \
-                | yq '.versions[].chartVersion' 2>/dev/null \
-              || true
-            )
-
-            for version in "${current_versions[@]}"; do
-              [ -z "$version" ] && continue
-
-              # Check whether this version existed in the previous commit
-              is_new=true
-              for prev in "${prev_versions[@]}"; do
-                if [ "$version" = "$prev" ]; then
-                  is_new=false
-                  break
-                fi
-              done
-
-              if $is_new; then
-                echo "New version detected: $name @ $version"
+              mapfile -t versions < <(yq '.versions[].chartVersion' "$file")
+              for version in "${versions[@]}"; do
+                [ -z "$version" ] && continue
+                echo "Queuing: $name @ $version"
                 items=$(echo "$items" | jq \
                   --arg f "$file" --arg n "$name" \
                   --arg c "$chart" --arg r "$original_repo" --arg v "$version" \
                   '. + [{"file":$f,"name":$n,"chart":$c,"repo":$r,"version":$v}]')
+              done
+            done < <(find addons -name '*.yaml' | sort)
+
+          else
+            # ── Push trigger: diff pushed commits against the before SHA ───────
+            changed=$(git diff --name-only "$BEFORE_SHA" HEAD -- 'addons/**/*.yaml' || true)
+
+            if [ -z "$changed" ]; then
+              echo "No addon files changed."
+              echo 'matrix=[]' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            for file in $changed; do
+              [ -f "$file" ] || continue
+
+              name=$(yq '.name' "$file")
+              chart=$(yq '.chart' "$file")
+              original_repo=$(yq '.originalRepo // ""' "$file")
+
+              if [ -z "$original_repo" ] || [ "$original_repo" = '""' ]; then
+                echo "Skipping $name — internal chart, no originalRepo"
+                continue
               fi
+
+              # Versions in current HEAD
+              mapfile -t current_versions < <(yq '.versions[].chartVersion' "$file")
+
+              # Versions in the before SHA (empty if file is brand-new)
+              mapfile -t prev_versions < <(
+                git show "$BEFORE_SHA":"$file" 2>/dev/null \
+                  | yq '.versions[].chartVersion' 2>/dev/null \
+                || true
+              )
+
+              for version in "${current_versions[@]}"; do
+                [ -z "$version" ] && continue
+
+                is_new=true
+                for prev in "${prev_versions[@]}"; do
+                  if [ "$version" = "$prev" ]; then
+                    is_new=false
+                    break
+                  fi
+                done
+
+                if $is_new; then
+                  echo "New version detected: $name @ $version"
+                  items=$(echo "$items" | jq \
+                    --arg f "$file" --arg n "$name" \
+                    --arg c "$chart" --arg r "$original_repo" --arg v "$version" \
+                    '. + [{"file":$f,"name":$n,"chart":$c,"repo":$r,"version":$v}]')
+                fi
+              done
             done
-          done
+          fi
 
           matrix=$(echo "$items" | jq -c '.')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"

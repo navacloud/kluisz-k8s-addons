@@ -186,64 +186,69 @@ jobs:
             --version "$ADDON_VERSION" \
             --untar --untardir ./chart
 
-      # ── Extract container images from rendered templates ────────────────────
+      # ── Extract container images from rendered workload specs ──────────────
+      # Renders the chart with helm template, then parses the output as YAML
+      # and extracts image refs from Pod/Deployment/DaemonSet/StatefulSet/etc.
+      # container specs. This correctly handles quoted image values and digest-
+      # pinned refs (e.g. image: "quay.io/foo:v1@sha256:abc") which plain grep
+      # would miss.
       - name: Extract container images
         id: images
         run: |
           chart_dir="./chart/$ADDON_CHART"
 
-          images=$(helm template probe "$chart_dir" \
+          helm template probe "$chart_dir" \
             --skip-crds \
             --set installCRDs=true \
             --set crds.enabled=false \
-            2>/dev/null \
-            | grep -oP '(?m)(?<=image: )[^\s"]+' \
-            | sort -u \
-            | grep ':' \
-            | grep -v '{{' \
-            || true)
+            2>/dev/null > /tmp/rendered.yaml || true
 
-          # Fallback: parse repository+tag pairs directly from values.yaml.
-          # Handles charts like Cilium that need cluster context to render.
-          if [ -z "$images" ]; then
-            echo "helm template yielded no images — falling back to values.yaml parsing"
-            images=$(python3 - <<'PYEOF'
-import re, pathlib, sys, os
+          images=$(python3 - <<'PYEOF'
+import yaml, sys
 
-chart = os.environ["ADDON_CHART"]
-path  = pathlib.Path(f"./chart/{chart}/values.yaml")
-if not path.exists():
+with open('/tmp/rendered.yaml') as f:
+    content = f.read()
+
+if not content.strip():
     sys.exit(0)
 
-text = path.read_text()
+try:
+    docs = list(yaml.safe_load_all(content))
+except Exception as e:
+    print(f"YAML parse error: {e}", file=sys.stderr)
+    sys.exit(0)
 
-# Find all adjacent repository/tag pairs (within 5 lines of each other)
-lines = text.splitlines()
-found = set()
-repo = tag = None
-repo_line = -1
+images = set()
+workload_kinds = {'Pod', 'Deployment', 'DaemonSet', 'StatefulSet', 'ReplicaSet', 'Job', 'CronJob'}
 
-for i, line in enumerate(lines):
-    rm = re.match(r'\s*repository:\s*["\']?([a-zA-Z0-9][^"\'\s]*)["\']?', line)
-    tm = re.match(r'\s*tag:\s*["\']?([a-zA-Z0-9][^"\'\s]*)["\']?', line)
-    if rm:
-        repo = rm.group(1).strip("\"'")
-        repo_line = i
-    if tm and repo and (i - repo_line) <= 5:
-        tag = tm.group(1).strip("\"'")
-        # Only include images with an external registry prefix
-        if '.' in repo.split('/')[0] and tag and '{{' not in tag:
-            found.add(f"{repo}:{tag}")
-        tag = None
+for doc in docs:
+    if not isinstance(doc, dict) or doc.get('kind') not in workload_kinds:
+        continue
 
-for img in sorted(found):
+    spec = doc.get('spec') or {}
+    if doc['kind'] == 'Pod':
+        pod_spec = spec
+    elif doc['kind'] == 'CronJob':
+        pod_spec = (spec.get('jobTemplate') or {}).get('spec', {}).get('template', {}).get('spec', {}) or {}
+    else:
+        pod_spec = ((spec.get('template') or {}).get('spec')) or {}
+
+    for key in ('initContainers', 'containers'):
+        for c in pod_spec.get(key, []) or []:
+            img = (c or {}).get('image', '')
+            if not img or '{{' in img:
+                continue
+            img = img.split('@')[0]   # strip digest suffix
+            if ':' in img:            # must have a tag
+                images.add(img)
+
+for img in sorted(images):
     print(img)
 PYEOF
 )
-          fi
 
           if [ -z "$images" ]; then
-            echo "Warning: no images found for this chart — skipping mirror step."
+            echo "Warning: no images extracted from rendered workload specs."
           else
             echo "Images to mirror:"
             echo "$images"
@@ -257,12 +262,12 @@ PYEOF
           while IFS= read -r src; do
             [ -z "$src" ] && continue
 
-            # quay.io/jetstack/cert-manager-controller:v1.19.2
-            #   tag  → v1.19.2
-            #   name → cert-manager-controller  (last path component only)
-            tag="${src##*:}"
-            image_name="${src%:*}"
-            image_name="${image_name##*/}"
+            # Strip digest if somehow still present (e.g. img:tag@sha256:...)
+            src="${src%%@*}"
+
+            tag="${src##*:}"              # v1.19.1
+            base="${src%:*}"             # quay.io/cilium/cilium
+            image_name="${base##*/}"     # cilium  (last path component only)
 
             dst="$REGISTRY/${image_name}:${tag}"
 
@@ -272,45 +277,43 @@ PYEOF
             docker push "$dst"
           done <<< "${{ steps.images.outputs.list }}"
 
-      # ── Patch values.yaml to reference kluisz registry ─────────────────────
+      # ── Patch values.yaml: direct string replace old image paths ────────────
+      # For each mirrored image, replace its full source path (without tag) in
+      # values.yaml with the kluisz registry equivalent. E.g.:
+      #   quay.io/cilium/cilium  →  asia-south1-.../cilium
+      # This is safer than regex heuristics and handles quoted YAML values.
       - name: Patch chart values to use kluisz registry
+        env:
+          IMAGES_LIST: ${{ steps.images.outputs.list }}
         run: |
-          python3 - <<PYEOF
-          import re, pathlib, sys, os
+          python3 - <<'PYEOF'
+import pathlib, sys, os
 
-          chart    = os.environ["ADDON_CHART"]
-          registry = os.environ["REGISTRY"]
-          path     = pathlib.Path(f"./chart/{chart}/values.yaml")
+chart    = os.environ["ADDON_CHART"]
+registry = os.environ["REGISTRY"]
+images   = os.environ.get("IMAGES_LIST", "")
 
-          if not path.exists():
-              print("No values.yaml found — nothing to patch.")
-              sys.exit(0)
+path = pathlib.Path(f"./chart/{chart}/values.yaml")
+if not path.exists():
+    print("No values.yaml found — nothing to patch.")
+    sys.exit(0)
 
-          text = path.read_text()
+text = path.read_text()
 
-          # 1. Replace standalone registry: fields pointing to an external registry.
-          #    e.g.  registry: quay.io  →  registry: asia-south1-.../...
-          text = re.sub(
-              r'(?m)^(\s*registry:\s*)(?!asia-south1)[a-zA-Z0-9][a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}',
-              rf'\g<1>{registry}',
-              text,
-          )
+for src in images.strip().splitlines():
+    src = src.strip()
+    if not src or ':' not in src:
+        continue
+    base = src.rsplit(':', 1)[0]       # quay.io/cilium/cilium
+    name = base.rsplit('/', 1)[-1]     # cilium
+    dst  = f"{registry}/{name}"        # asia-south1-.../cilium
+    if base in text:
+        text = text.replace(base, dst)
+        print(f"  {base}  →  {dst}")
 
-          # 2. Replace repository: fields that embed a registry prefix + path.
-          #    e.g.  repository: quay.io/jetstack/cert-manager-controller
-          #       →  repository: asia-south1-.../cert-manager-controller
-          def patch_repo(m):
-              val = m.group(1).strip('"\'')
-              parts = val.split('/')
-              if len(parts) >= 2 and '.' in parts[0]:
-                  return f"repository: {registry}/{parts[-1]}"
-              return m.group(0)
-
-          text = re.sub(r'repository:\s+(\S+)', patch_repo, text)
-
-          path.write_text(text)
-          print(f"Patched values.yaml for {chart}.")
-          PYEOF
+path.write_text(text)
+print(f"Patched values.yaml for {chart}.")
+PYEOF
 
       # ── Repackage and push the modified chart to kluisz OCI registry ────────
       - name: Repackage and push chart to kluisz OCI registry

@@ -3,6 +3,7 @@ description: "eBPF-based networking, observability, and security for Kubernetes"
 category: NETWORKING
 namespace: kube-system
 chart: cilium
+originalRepo: "https://helm.cilium.io"
 defaultValues:
   kubeProxyReplacement: "true"
   operator.replicas: "1"

@@ -26,6 +26,10 @@
       "type": "string",
       "description": "Chart name in the OCI registry (combined with config.yaml repository to form the full OCI URL)"
     },
+    "originalRepo": {
+      "type": "string",
+      "description": "Upstream Helm repository URL the chart was sourced from. Empty for internal Kluisz-only charts."
+    },
     "defaultValues": {
       "type": "object",
       "description": "Default Helm values as flat key-value pairs; use dot-notation for nested keys (e.g. controller.replicaCount)",

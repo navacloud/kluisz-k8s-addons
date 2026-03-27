@@ -3,6 +3,7 @@ description: "Scalable and efficient source of container resource metrics for Ku
 category: MONITORING
 namespace: kube-system
 chart: metrics-server
+originalRepo: "https://kubernetes-sigs.github.io/metrics-server/"
 defaultValues:
   args[0]: "--kubelet-insecure-tls"
 versions:

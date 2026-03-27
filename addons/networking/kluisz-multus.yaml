@@ -3,6 +3,7 @@ description: "Multus CNI enables attaching multiple network interfaces to Kubern
 category: NETWORKING
 namespace: kube-system
 chart: kluisz-multus
+originalRepo: ""
 defaultValues: {}
 versions:
   - version: "0.1.0"

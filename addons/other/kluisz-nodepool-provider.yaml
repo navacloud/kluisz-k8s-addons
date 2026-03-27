@@ -3,6 +3,7 @@ description: "Manages Kubernetes node pool lifecycle and provisioning for Kluisz
 category: OTHER
 namespace: kube-system
 chart: kluisz-nodepool-provider
+originalRepo: ""
 defaultValues: {}
 versions:
   - version: "v0.1.0-rc1"

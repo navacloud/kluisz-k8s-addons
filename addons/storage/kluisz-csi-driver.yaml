@@ -3,6 +3,7 @@ description: "Kluisz CSI driver for persistent volume provisioning and managemen
 category: STORAGE
 namespace: kube-system
 chart: kluisz-csi-driver
+originalRepo: ""
 defaultValues: {}
 versions:
   - version: "v0.1.0-alpha.1"

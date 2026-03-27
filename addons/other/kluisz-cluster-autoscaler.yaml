@@ -3,6 +3,7 @@ description: "Automatically adjusts the size of Kubernetes clusters based on wor
 category: OTHER
 namespace: kube-system
 chart: kluisz-cluster-autoscaler
+originalRepo: ""
 defaultValues: {}
 versions:
   - version: "0.1.0"

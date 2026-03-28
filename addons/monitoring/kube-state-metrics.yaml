@@ -3,11 +3,11 @@ description: "Exposes Kubernetes object state as Prometheus metrics"
 category: MONITORING
 namespace: monitoring
 chart: kube-state-metrics
-originalRepo: "https://prometheus-community.github.io/helm-charts"
+originalRepo: "oci://ghcr.io/prometheus-community/charts/kube-state-metrics"
 defaultValues:
   replicaCount: "1"
 versions:
-  - version: "6.4.1"
-    chartVersion: "6.4.1"
-    minK8sVersion: "1.23"
-    maxK8sVersion: "1.33"
+  - version: "7.0.0"
+    chartVersion: "7.0.0"
+    minK8sVersion: "1.33"
+    maxK8sVersion: "1.35"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -212,7 +213,7 @@ startupAPICheck:
 	}
 
 	dir := writeValues(t, original)
-	if err := patchValues(dir, testRegistry, images); err != nil {
+	if err := patchValues(context.Background(), dir, testRegistry, images); err != nil {
 		t.Fatalf("patchValues: %v", err)
 	}
 
@@ -252,7 +253,7 @@ operator:
 	}
 
 	dir := writeValues(t, original)
-	if err := patchValues(dir, testRegistry, images); err != nil {
+	if err := patchValues(context.Background(), dir, testRegistry, images); err != nil {
 		t.Fatalf("patchValues: %v", err)
 	}
 
@@ -287,7 +288,7 @@ image:
 	}
 
 	dir := writeValues(t, original)
-	if err := patchValues(dir, testRegistry, images); err != nil {
+	if err := patchValues(context.Background(), dir, testRegistry, images); err != nil {
 		t.Fatalf("patchValues: %v", err)
 	}
 
@@ -310,7 +311,7 @@ image:
 // patchValues when there is no values.yaml — must not error
 func TestPatchValues_MissingValuesYaml(t *testing.T) {
 	dir := t.TempDir() // no values.yaml written
-	if err := patchValues(dir, testRegistry, []string{"some.registry/img:v1"}); err != nil {
+	if err := patchValues(context.Background(), dir, testRegistry, []string{"some.registry/img:v1"}); err != nil {
 		t.Errorf("expected no error for missing values.yaml, got: %v", err)
 	}
 }

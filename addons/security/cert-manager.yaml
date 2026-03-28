@@ -3,7 +3,7 @@ description: "Automates the management and issuance of TLS certificates in Kuber
 category: SECURITY
 namespace: cert-manager
 chart: cert-manager
-originalRepo: "https://charts.jetstack.io"
+originalRepo: "oci://quay.io/jetstack/charts/cert-manager:v1.20.0"
 defaultValues:
   installCRDs: "true"
   crds.enabled: "true"
@@ -15,11 +15,11 @@ defaultValues:
   prometheus.servicemonitor.enabled: "false"
   global.leaderElection.namespace: "cert-manager"
 versions:
+  - version: "v1.20.0"
+    chartVersion: "v1.20.0"
+    minK8sVersion: "1.31"
+    maxK8sVersion: "1.35"
   - version: "v1.19.2"
     chartVersion: "v1.19.2"
     minK8sVersion: "1.31"
     maxK8sVersion: "1.35"
-  - version: "v1.16.2"
-    chartVersion: "v1.16.2"
-    minK8sVersion: "1.25"
-    maxK8sVersion: "1.32"

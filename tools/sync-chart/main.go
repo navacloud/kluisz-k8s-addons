@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"time"
 )
 
 type config struct {
@@ -12,6 +14,8 @@ type config struct {
 	repo     string
 	version  string
 }
+
+const stepTimeout = 5 * time.Minute
 
 func main() {
 	cfg := config{
@@ -27,46 +31,69 @@ func main() {
 }
 
 func run(cfg config) error {
+	total := time.Now()
+
 	// 1. Pull upstream chart
-	fmt.Printf("==> pulling %s@%s from %s\n", cfg.chart, cfg.version, cfg.repo)
-	chartDir, err := pullChart(cfg.repo, cfg.chart, cfg.version, "./chart")
+	fmt.Printf("\n==> [1/5] pulling %s@%s from %s\n", cfg.chart, cfg.version, cfg.repo)
+	t := time.Now()
+	ctx1, cancel1 := context.WithTimeout(context.Background(), stepTimeout)
+	defer cancel1()
+	chartDir, err := pullChart(ctx1, cfg.repo, cfg.chart, cfg.version, "./chart")
 	if err != nil {
 		return fmt.Errorf("pull chart: %w", err)
 	}
+	fmt.Printf("    done in %s — unpacked to %s\n", time.Since(t).Round(time.Millisecond), chartDir)
 
 	// 2. Render chart and extract images from workload specs
-	fmt.Println("==> extracting images from rendered workload specs")
-	images, err := extractImages(chartDir)
+	fmt.Println("\n==> [2/5] rendering chart and extracting container images")
+	t = time.Now()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), stepTimeout)
+	defer cancel2()
+	images, err := extractImages(ctx2, chartDir)
 	if err != nil {
 		return fmt.Errorf("extract images: %w", err)
 	}
 	if len(images) == 0 {
 		fmt.Println("  warning: no images found in rendered output")
 	} else {
+		fmt.Printf("  found %d image(s) in %s:\n", len(images), time.Since(t).Round(time.Millisecond))
 		for _, img := range images {
-			fmt.Printf("  found: %s\n", img)
+			fmt.Printf("    • %s\n", img)
 		}
 	}
 
 	// 3. Mirror each image to kluisz registry
-	fmt.Println("==> mirroring images to kluisz registry")
-	if err := mirrorImages(images, cfg.registry); err != nil {
+	fmt.Printf("\n==> [3/5] mirroring %d image(s) to %s\n", len(images), cfg.registry)
+	t = time.Now()
+	ctx3, cancel3 := context.WithTimeout(context.Background(), stepTimeout)
+	defer cancel3()
+	if err := mirrorImages(ctx3, images, cfg.registry); err != nil {
 		return fmt.Errorf("mirror images: %w", err)
 	}
+	fmt.Printf("    all images mirrored in %s\n", time.Since(t).Round(time.Millisecond))
 
 	// 4. Patch values.yaml — replace upstream image refs with kluisz registry
-	fmt.Println("==> patching values.yaml")
-	if err := patchValues(chartDir, cfg.registry, images); err != nil {
+	fmt.Println("\n==> [4/5] patching values.yaml")
+	t = time.Now()
+	ctx4, cancel4 := context.WithTimeout(context.Background(), stepTimeout)
+	defer cancel4()
+	if err := patchValues(ctx4, chartDir, cfg.registry, images); err != nil {
 		return fmt.Errorf("patch values: %w", err)
 	}
+	fmt.Printf("    done in %s\n", time.Since(t).Round(time.Millisecond))
 
 	// 5. Package and push chart to kluisz OCI registry
-	fmt.Printf("==> pushing chart oci://%s/%s:%s\n", cfg.registry, cfg.chart, cfg.version)
-	if err := pushChart(chartDir, cfg.chart, cfg.version, cfg.registry); err != nil {
+	fmt.Printf("\n==> [5/5] pushing chart to oci://%s/%s:%s\n", cfg.registry, cfg.chart, cfg.version)
+	t = time.Now()
+	ctx5, cancel5 := context.WithTimeout(context.Background(), stepTimeout)
+	defer cancel5()
+	if err := pushChart(ctx5, chartDir, cfg.chart, cfg.version, cfg.registry); err != nil {
 		return fmt.Errorf("push chart: %w", err)
 	}
+	fmt.Printf("    done in %s\n", time.Since(t).Round(time.Millisecond))
 
-	fmt.Printf("done: oci://%s/%s:%s\n", cfg.registry, cfg.chart, cfg.version)
+	fmt.Printf("\ndone: oci://%s/%s:%s (total: %s)\n",
+		cfg.registry, cfg.chart, cfg.version, time.Since(total).Round(time.Millisecond))
 	return nil
 }
 

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -49,12 +51,13 @@ var workloadKinds = map[string]bool{
 
 // extractImages renders the chart via the Helm SDK and parses the manifest,
 // collecting unique container images from all workload specs.
-func extractImages(chartDir string) ([]string, error) {
-	manifest, err := renderChart(chartDir)
+func extractImages(ctx context.Context, chartDir string) ([]string, error) {
+	manifest, err := renderChart(ctx, chartDir)
 	if err != nil {
 		return nil, err
 	}
-	return parseImages(manifest), nil
+	images := parseImages(manifest)
+	return images, nil
 }
 
 // parseImages parses a multi-document Helm manifest YAML string and returns
@@ -64,6 +67,8 @@ func parseImages(manifest string) []string {
 	seen := map[string]bool{}
 	dec := yaml.NewDecoder(strings.NewReader(manifest))
 
+	docCount := 0
+	workloadCount := 0
 	for {
 		var obj k8sResource
 		if err := dec.Decode(&obj); err != nil {
@@ -72,10 +77,12 @@ func parseImages(manifest string) []string {
 			}
 			continue // skip unparseable documents
 		}
+		docCount++
 
 		if !workloadKinds[obj.Kind] {
 			continue
 		}
+		workloadCount++
 
 		var containers []k8sContainer
 		switch obj.Kind {
@@ -103,6 +110,7 @@ func parseImages(manifest string) []string {
 			}
 		}
 	}
+	fmt.Printf("  parsed %d YAML documents — %d workload resource(s) found\n", docCount, workloadCount)
 
 	images := make([]string, 0, len(seen))
 	for img := range seen {
@@ -114,10 +122,20 @@ func parseImages(manifest string) []string {
 
 // mirrorImages copies each upstream image to the kluisz registry using crane.
 // crane reads GCP credentials from ~/.docker/config.json (set by gcloud auth configure-docker).
-func mirrorImages(images []string, registry string) error {
-	opts := []crane.Option{crane.WithAuthFromKeychain(authn.DefaultKeychain)}
+// Respects ctx — each copy call is cancelled if the deadline is exceeded.
+func mirrorImages(ctx context.Context, images []string, registry string) error {
+	opts := []crane.Option{
+		crane.WithAuthFromKeychain(authn.DefaultKeychain),
+		crane.WithContext(ctx),
+	}
 
-	for _, src := range images {
+	for i, src := range images {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("mirrorImages timed out after %d/%d images: %w", i, len(images), ctx.Err())
+		default:
+		}
+
 		lastColon := strings.LastIndex(src, ":")
 		if lastColon < 0 {
 			continue
@@ -127,10 +145,12 @@ func mirrorImages(images []string, registry string) error {
 		name := base[strings.LastIndex(base, "/")+1:]
 		dst := fmt.Sprintf("%s/%s:%s", registry, name, tag)
 
-		fmt.Printf("  %s\n    → %s\n", src, dst)
+		fmt.Printf("  [%d/%d] %s\n         → %s\n", i+1, len(images), src, dst)
+		t := time.Now()
 		if err := crane.Copy(src, dst, opts...); err != nil {
 			return fmt.Errorf("copy %s → %s: %w", src, dst, err)
 		}
+		fmt.Printf("         done in %s\n", time.Since(t).Round(time.Millisecond))
 	}
 	return nil
 }

@@ -12,11 +12,15 @@ package main
 // correctly against the real chart versions declared in the addon YAML files.
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+const integStepTimeout = 5 * time.Minute
 
 const integTestRegistry = "test.registry.io/kluisz/test"
 
@@ -92,12 +96,16 @@ func TestIntegration_ExtractImages(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
-			chartDir, err := pullChart(tc.repo, tc.chart, tc.version, dir)
+			pullCtx, pullCancel := context.WithTimeout(context.Background(), integStepTimeout)
+			defer pullCancel()
+			chartDir, err := pullChart(pullCtx, tc.repo, tc.chart, tc.version, dir)
 			if err != nil {
 				t.Fatalf("pullChart: %v", err)
 			}
 
-			images, err := extractImages(chartDir)
+			extractCtx, extractCancel := context.WithTimeout(context.Background(), integStepTimeout)
+			defer extractCancel()
+			images, err := extractImages(extractCtx, chartDir)
 			if err != nil {
 				t.Fatalf("extractImages: %v", err)
 			}
@@ -131,12 +139,16 @@ func TestIntegration_PatchValues(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
-			chartDir, err := pullChart(tc.repo, tc.chart, tc.version, dir)
+			pullCtx, pullCancel := context.WithTimeout(context.Background(), integStepTimeout)
+			defer pullCancel()
+			chartDir, err := pullChart(pullCtx, tc.repo, tc.chart, tc.version, dir)
 			if err != nil {
 				t.Fatalf("pullChart: %v", err)
 			}
 
-			images, err := extractImages(chartDir)
+			extractCtx, extractCancel := context.WithTimeout(context.Background(), integStepTimeout)
+			defer extractCancel()
+			images, err := extractImages(extractCtx, chartDir)
 			if err != nil {
 				t.Fatalf("extractImages: %v", err)
 			}
@@ -144,7 +156,9 @@ func TestIntegration_PatchValues(t *testing.T) {
 				t.Skip("no images extracted — skipping patch test")
 			}
 
-			if err := patchValues(chartDir, integTestRegistry, images); err != nil {
+			patchCtx, patchCancel := context.WithTimeout(context.Background(), integStepTimeout)
+			defer patchCancel()
+			if err := patchValues(patchCtx, chartDir, integTestRegistry, images); err != nil {
 				t.Fatalf("patchValues: %v", err)
 			}
 
@@ -192,12 +206,16 @@ func TestIntegration_RenderProducesValidYAML(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
-			chartDir, err := pullChart(tc.repo, tc.chart, tc.version, dir)
+			pullCtx, pullCancel := context.WithTimeout(context.Background(), integStepTimeout)
+			defer pullCancel()
+			chartDir, err := pullChart(pullCtx, tc.repo, tc.chart, tc.version, dir)
 			if err != nil {
 				t.Fatalf("pullChart: %v", err)
 			}
 
-			manifest, err := renderChart(chartDir)
+			renderCtx, renderCancel := context.WithTimeout(context.Background(), integStepTimeout)
+			defer renderCancel()
+			manifest, err := renderChart(renderCtx, chartDir)
 			if err != nil {
 				t.Fatalf("renderChart: %v", err)
 			}

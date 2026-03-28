@@ -7,7 +7,7 @@ originalRepo: "https://kubernetes-sigs.github.io/metrics-server/"
 defaultValues:
   args[0]: "--kubelet-insecure-tls"
 versions:
-  - version: "3.13.0"
-    chartVersion: "3.13.0"
+  - version: "3.12.0"
+    chartVersion: "3.12.0"
     minK8sVersion: "1.31"
     maxK8sVersion: "1.34"

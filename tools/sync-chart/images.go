@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
@@ -49,6 +48,18 @@ var workloadKinds = map[string]bool{
 	"StatefulSet": true, "ReplicaSet": true, "Job": true, "CronJob": true,
 }
 
+// looksLikeWorkload does a cheap string scan to check whether a YAML document
+// might be a workload resource, so we can skip expensive parsing of huge
+// non-workload documents like CRDs.
+func looksLikeWorkload(doc string) bool {
+	for kind := range workloadKinds {
+		if strings.Contains(doc, "kind: "+kind) {
+			return true
+		}
+	}
+	return false
+}
+
 // extractImages renders the chart via the Helm SDK and parses the manifest,
 // collecting unique container images from all workload specs.
 func extractImages(ctx context.Context, chartDir string) ([]string, error) {
@@ -65,20 +76,30 @@ func extractImages(ctx context.Context, chartDir string) ([]string, error) {
 // Digest suffixes (@sha256:...) are stripped; images without a tag are ignored.
 func parseImages(manifest string) []string {
 	seen := map[string]bool{}
-	dec := yaml.NewDecoder(strings.NewReader(manifest))
+
+	// Split the manifest into individual YAML documents and only parse those
+	// that look like workload resources. This avoids spending minutes parsing
+	// huge CRD documents (e.g. cert-manager embeds full OpenAPI schemas).
+	docs := strings.Split("\n"+manifest, "\n---")
 
 	docCount := 0
 	workloadCount := 0
-	for {
-		var obj k8sResource
-		if err := dec.Decode(&obj); err != nil {
-			if err == io.EOF {
-				break
-			}
-			continue // skip unparseable documents
+	for _, doc := range docs {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
 		}
 		docCount++
 
+		// Quick string check: skip documents that don't contain a workload kind.
+		if !looksLikeWorkload(doc) {
+			continue
+		}
+
+		var obj k8sResource
+		if err := yaml.Unmarshal([]byte(doc), &obj); err != nil {
+			continue
+		}
 		if !workloadKinds[obj.Kind] {
 			continue
 		}

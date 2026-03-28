@@ -143,6 +143,7 @@ func renderChart(ctx context.Context, chartDir string) (string, error) {
 		if strings.TrimSpace(content) == "" || !strings.HasSuffix(name, ".yaml") {
 			continue
 		}
+		buf.WriteString("\n---\n")
 		buf.WriteString(content)
 		yamlCount++
 	}

@@ -125,12 +125,10 @@ jobs:
           echo "Matrix: $matrix"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # JOB 2: For every (addon, version) pair in the matrix:
-  #           1. Pull the upstream Helm chart
-  #           2. Extract all container images
-  #           3. Mirror images to kluisz registry (docker pull → retag → push)
-  #           4. Patch chart values to reference kluisz registry
-  #           5. Repackage and push chart to kluisz OCI registry
+  # JOB 2: For every (addon, version) pair in the matrix, run tools/sync-chart.
+  #         The Go app pulls the upstream chart, extracts images from rendered
+  #         workload specs, mirrors them to the kluisz registry via crane, patches
+  #         values.yaml with the new image paths, then pushes the modified chart.
   #
   #         fail-fast: false so one addon failure doesn't cancel the others.
   # ─────────────────────────────────────────────────────────────────────────────
@@ -144,8 +142,7 @@ jobs:
         addon: ${{ fromJson(needs.detect.outputs.matrix) }}
       fail-fast: false
 
-    # Expose matrix values as env vars so they are never interpolated directly
-    # into shell commands (prevents injection from unexpected chars in YAML values).
+    # Expose matrix values as env vars — the Go app reads these directly.
     env:
       ADDON_NAME:    ${{ matrix.addon.name }}
       ADDON_CHART:   ${{ matrix.addon.chart }}
@@ -156,9 +153,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/setup-helm@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: tools/sync-chart/go.sum
 
-      # ── GCP auth (same pattern as kluisz-csi-driver) ───────────────────────
+      # ── GCP auth ────────────────────────────────────────────────────────────
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         uses: google-github-actions/auth@v2
         with:
@@ -170,159 +170,18 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Configure Docker and Helm for Artifact Registry
-        run: |
-          gcloud auth configure-docker gcr.io --quiet
-          gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
-          gcloud auth print-access-token | \
-            helm registry login -u oauth2accesstoken --password-stdin \
-            asia-south1-docker.pkg.dev
+      # Writes a credential helper entry to ~/.docker/config.json; both crane
+      # (authn.DefaultKeychain) and the Helm SDK registry client read from there.
+      - name: Configure Docker credential helper for Artifact Registry
+        run: gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
 
-      # ── Pull upstream chart ─────────────────────────────────────────────────
-      - name: Pull chart from upstream repo
-        run: |
-          helm repo add addon-repo "$ADDON_REPO" --force-update
-          helm pull "addon-repo/$ADDON_CHART" \
-            --version "$ADDON_VERSION" \
-            --untar --untardir ./chart
-
-      # ── Extract container images from rendered workload specs ──────────────
-      # Renders the chart with helm template, then parses the output as YAML
-      # and extracts image refs from Pod/Deployment/DaemonSet/StatefulSet/etc.
-      # container specs. This correctly handles quoted image values and digest-
-      # pinned refs (e.g. image: "quay.io/foo:v1@sha256:abc") which plain grep
-      # would miss.
-      - name: Extract container images
-        id: images
-        run: |
-          chart_dir="./chart/$ADDON_CHART"
-
-          helm template probe "$chart_dir" \
-            --skip-crds \
-            --set installCRDs=true \
-            --set crds.enabled=false \
-            2>/dev/null > /tmp/rendered.yaml || true
-
-          images=$(python3 - <<'PYEOF'
-import yaml, sys
-
-with open('/tmp/rendered.yaml') as f:
-    content = f.read()
-
-if not content.strip():
-    sys.exit(0)
-
-try:
-    docs = list(yaml.safe_load_all(content))
-except Exception as e:
-    print(f"YAML parse error: {e}", file=sys.stderr)
-    sys.exit(0)
-
-images = set()
-workload_kinds = {'Pod', 'Deployment', 'DaemonSet', 'StatefulSet', 'ReplicaSet', 'Job', 'CronJob'}
-
-for doc in docs:
-    if not isinstance(doc, dict) or doc.get('kind') not in workload_kinds:
-        continue
-
-    spec = doc.get('spec') or {}
-    if doc['kind'] == 'Pod':
-        pod_spec = spec
-    elif doc['kind'] == 'CronJob':
-        pod_spec = (spec.get('jobTemplate') or {}).get('spec', {}).get('template', {}).get('spec', {}) or {}
-    else:
-        pod_spec = ((spec.get('template') or {}).get('spec')) or {}
-
-    for key in ('initContainers', 'containers'):
-        for c in pod_spec.get(key, []) or []:
-            img = (c or {}).get('image', '')
-            if not img or '{{' in img:
-                continue
-            img = img.split('@')[0]   # strip digest suffix
-            if ':' in img:            # must have a tag
-                images.add(img)
-
-for img in sorted(images):
-    print(img)
-PYEOF
-)
-
-          if [ -z "$images" ]; then
-            echo "Warning: no images extracted from rendered workload specs."
-          else
-            echo "Images to mirror:"
-            echo "$images"
-          fi
-
-          { echo "list<<EOF"; echo "$images"; echo "EOF"; } >> "$GITHUB_OUTPUT"
-
-      # ── Mirror images: pull upstream → retag → push to kluisz registry ─────
-      - name: Mirror images to kluisz registry
-        run: |
-          while IFS= read -r src; do
-            [ -z "$src" ] && continue
-
-            # Strip digest if somehow still present (e.g. img:tag@sha256:...)
-            src="${src%%@*}"
-
-            tag="${src##*:}"              # v1.19.1
-            base="${src%:*}"             # quay.io/cilium/cilium
-            image_name="${base##*/}"     # cilium  (last path component only)
-
-            dst="$REGISTRY/${image_name}:${tag}"
-
-            echo "Mirroring: $src → $dst"
-            docker pull "$src"
-            docker tag  "$src" "$dst"
-            docker push "$dst"
-          done <<< "${{ steps.images.outputs.list }}"
-
-      # ── Patch values.yaml: direct string replace old image paths ────────────
-      # For each mirrored image, replace its full source path (without tag) in
-      # values.yaml with the kluisz registry equivalent. E.g.:
-      #   quay.io/cilium/cilium  →  asia-south1-.../cilium
-      # This is safer than regex heuristics and handles quoted YAML values.
-      - name: Patch chart values to use kluisz registry
-        env:
-          IMAGES_LIST: ${{ steps.images.outputs.list }}
-        run: |
-          python3 - <<'PYEOF'
-import pathlib, sys, os
-
-chart    = os.environ["ADDON_CHART"]
-registry = os.environ["REGISTRY"]
-images   = os.environ.get("IMAGES_LIST", "")
-
-path = pathlib.Path(f"./chart/{chart}/values.yaml")
-if not path.exists():
-    print("No values.yaml found — nothing to patch.")
-    sys.exit(0)
-
-text = path.read_text()
-
-for src in images.strip().splitlines():
-    src = src.strip()
-    if not src or ':' not in src:
-        continue
-    base = src.rsplit(':', 1)[0]       # quay.io/cilium/cilium
-    name = base.rsplit('/', 1)[-1]     # cilium
-    dst  = f"{registry}/{name}"        # asia-south1-.../cilium
-    if base in text:
-        text = text.replace(base, dst)
-        print(f"  {base}  →  {dst}")
-
-path.write_text(text)
-print(f"Patched values.yaml for {chart}.")
-PYEOF
-
-      # ── Repackage and push the modified chart to kluisz OCI registry ────────
-      - name: Repackage and push chart to kluisz OCI registry
-        run: |
-          helm package "./chart/$ADDON_CHART" --version "$ADDON_VERSION"
-
-          helm push "${ADDON_CHART}-${ADDON_VERSION}.tgz" "oci://$REGISTRY"
-
-          echo "Pushed chart: oci://$REGISTRY/$ADDON_CHART:$ADDON_VERSION"
+      # ── Run sync-chart Go app ────────────────────────────────────────────────
+      # Pulls the upstream chart, extracts images from rendered workload specs,
+      # mirrors them to the kluisz registry via crane (no Docker daemon needed),
+      # patches values.yaml with new image paths, then pushes the modified chart.
+      - name: Sync chart
+        working-directory: tools/sync-chart
+        run: go run .
 
       # ── Job summary ─────────────────────────────────────────────────────────
       - name: Summary
@@ -331,8 +190,6 @@ PYEOF
           namespace=$(yq '.namespace' "$ADDON_FILE" 2>/dev/null || echo "default")
 
           echo "## $ADDON_NAME @ $ADDON_VERSION" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Images mirrored to:** \`$REGISTRY/<image-name>:<tag>\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Chart:** \`oci://$REGISTRY/$ADDON_CHART:$ADDON_VERSION\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

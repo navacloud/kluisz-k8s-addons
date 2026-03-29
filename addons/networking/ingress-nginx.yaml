@@ -1,0 +1,11 @@
+name: ingress-nginx
+description: "Ingress controller for Kubernetes using NGINX as a reverse proxy and load balancer"
+category: NETWORKING
+namespace: ingress-nginx
+chart: ingress-nginx
+originalRepo: "https://kubernetes.github.io/ingress-nginx"
+versions:
+  - version: "4.15.1"
+    chartVersion: "4.15.1"
+    minK8sVersion: "1.31"
+    maxK8sVersion: "1.35"

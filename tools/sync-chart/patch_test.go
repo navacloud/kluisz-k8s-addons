@@ -308,6 +308,57 @@ image:
 	}
 }
 
+// patchValues for ingress-nginx — multiple images sharing the same domain with
+// split registry/repository fields. The second image's repository must still be
+// patched even though the first image already replaced the registry: field.
+func TestPatchValues_IngressNginx(t *testing.T) {
+	original := `
+controller:
+  image:
+    registry: registry.k8s.io
+    repository: ingress-nginx/controller
+    tag: v1.15.1
+  admissionWebhooks:
+    patch:
+      image:
+        registry: registry.k8s.io
+        repository: ingress-nginx/kube-webhook-certgen
+        tag: v1.6.9
+`
+	images := []string{
+		"registry.k8s.io/ingress-nginx/controller:v1.15.1",
+		"registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.6.9",
+	}
+
+	dir := writeValues(t, original)
+	if err := patchValues(context.Background(), dir, testRegistry, images); err != nil {
+		t.Fatalf("patchValues: %v", err)
+	}
+
+	result := readValues(t, dir)
+
+	// Both registry: fields must be rewritten
+	if strings.Contains(result, "registry: registry.k8s.io") {
+		t.Errorf("original registry fields should be rewritten\ngot:\n%s", result)
+	}
+	if !strings.Contains(result, "registry: "+testRegistry) {
+		t.Errorf("expected registry field to use testRegistry\ngot:\n%s", result)
+	}
+	// Both repository: fields must be simplified
+	if strings.Contains(result, "ingress-nginx/controller") {
+		t.Errorf("controller repository should be simplified\ngot:\n%s", result)
+	}
+	if strings.Contains(result, "ingress-nginx/kube-webhook-certgen") {
+		t.Errorf("kube-webhook-certgen repository should be simplified\ngot:\n%s", result)
+	}
+	if !strings.Contains(result, "repository: controller") {
+		t.Errorf("expected simplified controller repository\ngot:\n%s", result)
+	}
+	if !strings.Contains(result, "repository: kube-webhook-certgen") {
+		t.Errorf("expected simplified kube-webhook-certgen repository\ngot:\n%s", result)
+	}
+}
+
 // patchValues when there is no values.yaml — must not error
 func TestPatchValues_MissingValuesYaml(t *testing.T) {
 	dir := t.TempDir() // no values.yaml written

@@ -90,20 +90,32 @@ func replaceImageRef(text, src, registry string) string {
 
 	default:
 		// Case 3: split registry:/repository: fields
+		// Replace the registry: field if it still has the upstream domain.
+		// It may already have been replaced by a prior image from the same domain.
 		registryRe := regexp.MustCompile(`(registry:\s*)` + regexp.QuoteMeta(domain))
-		if !registryRe.MatchString(text) {
+		registryMatched := registryRe.MatchString(text)
+		if registryMatched {
+			text = registryRe.ReplaceAllStringFunc(text, func(m string) string {
+				idx := strings.Index(m, domain)
+				return m[:idx] + registry
+			})
+		}
+
+		// Always attempt the repository: replacement — even if the registry:
+		// field was already updated by a prior image sharing the same domain.
+		repoRe := regexp.MustCompile(`(repository:\s*)` + regexp.QuoteMeta(pathInRepo) + `\b`)
+		repoMatched := repoRe.MatchString(text)
+		if repoMatched {
+			text = repoRe.ReplaceAllStringFunc(text, func(m string) string {
+				idx := strings.Index(m, pathInRepo)
+				return m[:idx] + name
+			})
+		}
+
+		if !registryMatched && !repoMatched {
 			fmt.Printf("    [no-match] %s — skipping\n", base)
 			return text
 		}
-		text = registryRe.ReplaceAllStringFunc(text, func(m string) string {
-			idx := strings.Index(m, domain)
-			return m[:idx] + registry
-		})
-		repoRe := regexp.MustCompile(`(repository:\s*)` + regexp.QuoteMeta(pathInRepo) + `\b`)
-		text = repoRe.ReplaceAllStringFunc(text, func(m string) string {
-			idx := strings.Index(m, pathInRepo)
-			return m[:idx] + name
-		})
 		fmt.Printf("    [split]   registry:%s + repo:%s → %s\n", domain, pathInRepo, dst)
 		return text
 	}

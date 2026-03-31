@@ -1,0 +1,12 @@
+name: kluisz-lb-controller
+description: "Provisions Kluisz Network Manager load balancers for Kubernetes Services of type LoadBalancer"
+category: NETWORKING
+namespace: kube-system
+chart: kluisz-lb-controller
+originalRepo: ""
+defaultValues: {}
+versions:
+  - version: "v0.1.0"
+    chartVersion: "0.1.0"
+    minK8sVersion: "1.33"
+    maxK8sVersion: "1.35"

@@ -5,8 +5,8 @@ namespace: kube-system
 chart: metrics-server
 originalRepo: "https://kubernetes-sigs.github.io/metrics-server/"
 isDefault: false
-# defaultValues:
-#   args[0]: "--kubelet-insecure-tls"
+defaultValues:
+  args[0]: "--kubelet-insecure-tls"
 versions:
   - version: "3.12.0"
     chartVersion: "3.12.0"

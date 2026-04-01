@@ -7,7 +7,7 @@ originalRepo: ""
 isDefault: true
 defaultValues: {}
 versions:
-  - version: "v0.1.1"
-    chartVersion: "v0.1.1"
+  - version: "0.1.1"
+    chartVersion: "0.1.1"
     minK8sVersion: "1.33"
     maxK8sVersion: "1.35"

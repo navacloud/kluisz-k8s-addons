@@ -62,8 +62,8 @@ func looksLikeWorkload(doc string) bool {
 
 // extractImages renders the chart via the Helm SDK and parses the manifest,
 // collecting unique container images from all workload specs.
-func extractImages(ctx context.Context, chartDir string) ([]string, error) {
-	manifest, err := renderChart(ctx, chartDir)
+func extractImages(ctx context.Context, chartDir string, addonValues string) ([]string, error) {
+	manifest, err := renderChart(ctx, chartDir, addonValues)
 	if err != nil {
 		return nil, err
 	}

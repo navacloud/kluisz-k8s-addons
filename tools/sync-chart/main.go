@@ -9,20 +9,22 @@ import (
 )
 
 type config struct {
-	registry string
-	chart    string
-	repo     string
-	version  string
+	registry    string
+	chart       string
+	repo        string
+	version     string
+	addonValues string // optional: defaultValues.valuesYAML from addon YAML
 }
 
 const stepTimeout = 5 * time.Minute
 
 func main() {
 	cfg := config{
-		registry: mustEnv("REGISTRY"),
-		chart:    mustEnv("ADDON_CHART"),
-		repo:     mustEnv("ADDON_REPO"),
-		version:  mustEnv("ADDON_VERSION"),
+		registry:    mustEnv("REGISTRY"),
+		chart:       mustEnv("ADDON_CHART"),
+		repo:        mustEnv("ADDON_REPO"),
+		version:     mustEnv("ADDON_VERSION"),
+		addonValues: os.Getenv("ADDON_COMPILE_VALUES"),
 	}
 
 	if err := run(cfg); err != nil {
@@ -49,7 +51,7 @@ func run(cfg config) error {
 	t = time.Now()
 	ctx2, cancel2 := context.WithTimeout(context.Background(), stepTimeout)
 	defer cancel2()
-	images, err := extractImages(ctx2, chartDir)
+	images, err := extractImages(ctx2, chartDir, cfg.addonValues)
 	if err != nil {
 		return fmt.Errorf("extract images: %w", err)
 	}

@@ -1,11 +1,11 @@
 name: argocd
 description: "Continuous deployment via gitops"
-category: cd
+category: CD
 namespace: argocd
 chart: argo-cd
 originalRepo: "https://argoproj.github.io/argo-helm"
 isDefault: false
-defaultValues:
+compileTimeValues:
   valuesYAML: |
     redis:
       image:

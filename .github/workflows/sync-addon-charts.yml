@@ -55,6 +55,7 @@ jobs:
                 continue
               fi
 
+              addon_values=$(yq '.compileTimeValues.valuesYAML // ""' "$file")
               mapfile -t versions < <(yq '.versions[].chartVersion' "$file")
               for version in "${versions[@]}"; do
                 [ -z "$version" ] && continue
@@ -62,7 +63,8 @@ jobs:
                 items=$(echo "$items" | jq \
                   --arg f "$file" --arg n "$name" \
                   --arg c "$chart" --arg r "$original_repo" --arg v "$version" \
-                  '. + [{"file":$f,"name":$n,"chart":$c,"repo":$r,"version":$v}]')
+                  --arg av "$addon_values" \
+                  '. + [{"file":$f,"name":$n,"chart":$c,"repo":$r,"version":$v,"addonValues":$av}]')
               done
             done < <(find addons -name '*.yaml' | sort)
 
@@ -98,6 +100,8 @@ jobs:
                 || true
               )
 
+              addon_values=$(yq '.compileTimeValues.valuesYAML // ""' "$file")
+
               for version in "${current_versions[@]}"; do
                 [ -z "$version" ] && continue
 
@@ -114,7 +118,8 @@ jobs:
                   items=$(echo "$items" | jq \
                     --arg f "$file" --arg n "$name" \
                     --arg c "$chart" --arg r "$original_repo" --arg v "$version" \
-                    '. + [{"file":$f,"name":$n,"chart":$c,"repo":$r,"version":$v}]')
+                    --arg av "$addon_values" \
+                    '. + [{"file":$f,"name":$n,"chart":$c,"repo":$r,"version":$v,"addonValues":$av}]')
                 fi
               done
             done
@@ -149,6 +154,7 @@ jobs:
       ADDON_REPO:    ${{ matrix.addon.repo }}
       ADDON_VERSION: ${{ matrix.addon.version }}
       ADDON_FILE:    ${{ matrix.addon.file }}
+      ADDON_COMPILE_VALUES:  ${{ matrix.addon.addonValues }}
 
     steps:
       - uses: actions/checkout@v4

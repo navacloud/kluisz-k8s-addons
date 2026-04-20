@@ -15,7 +15,7 @@
     },
     "category": {
       "type": "string",
-      "enum": ["NETWORKING", "SECURITY", "MONITORING", "STORAGE", "OTHER"],
+      "enum": ["NETWORKING", "SECURITY", "MONITORING", "STORAGE", "OTHER", "CD"],
       "description": "Addon category, must match AddonCategory enum in cluster-manager"
     },
     "namespace": {
@@ -36,8 +36,25 @@
     },
     "defaultValues": {
       "type": "object",
-      "description": "Default Helm values as flat key-value pairs; use dot-notation for nested keys (e.g. controller.replicaCount)",
-      "additionalProperties": { "type": "string" }
+      "description": "Helm values applied at install/upgrade time (apply-time). Passed to the cluster-manager as default overrides.",
+      "additionalProperties": false,
+      "properties": {
+        "valuesYAML": {
+          "type": "string",
+          "description": "Raw Helm values YAML string, equivalent to --values flag content"
+        }
+      }
+    },
+    "compileTimeValues": {
+      "type": "object",
+      "description": "Helm values used only during CI chart sync (compile-time). Applied when rendering the chart to extract and mirror images.",
+      "additionalProperties": false,
+      "properties": {
+        "valuesYAML": {
+          "type": "string",
+          "description": "Raw Helm values YAML string used during image extraction and mirroring"
+        }
+      }
     },
     "versions": {
       "type": "array",

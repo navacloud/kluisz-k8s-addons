@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"golang.org/x/oauth2/google"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -86,8 +87,10 @@ func pullChart(ctx context.Context, repo, chart, version, destDir string) (strin
 // Helm engine in LintMode. LintMode turns `required` and `fail` calls into
 // warnings instead of hard errors, so charts that need cluster context
 // (cert-manager, cilium) still produce workload output for image extraction.
+// addonValues is an optional YAML string (defaultValues.valuesYAML from the
+// addon definition) merged on top of the chart's defaults before rendering.
 // Respects ctx — if rendering takes longer than the deadline, returns a timeout error.
-func renderChart(ctx context.Context, chartDir string) (string, error) {
+func renderChart(ctx context.Context, chartDir string, addonValues string) (string, error) {
 	fmt.Printf("  loading chart from %s\n", chartDir)
 	ch, err := loader.Load(chartDir)
 	if err != nil {
@@ -96,7 +99,18 @@ func renderChart(ctx context.Context, chartDir string) (string, error) {
 	fmt.Printf("  loaded chart %q version %s (%d templates)\n",
 		ch.Name(), ch.Metadata.Version, len(ch.Templates))
 
-	vals, err := chartutil.ToRenderValues(ch, map[string]interface{}{},
+	// Parse addonValues YAML (if any) and merge over chart defaults.
+	userVals := map[string]interface{}{}
+	if addonValues != "" {
+		if err := yaml.Unmarshal([]byte(addonValues), &userVals); err != nil {
+			fmt.Printf("  warning: could not parse ADDON_VALUES: %v — rendering with chart defaults\n", err)
+			userVals = map[string]interface{}{}
+		} else {
+			fmt.Printf("  merging %d top-level key(s) from ADDON_VALUES\n", len(userVals))
+		}
+	}
+
+	vals, err := chartutil.ToRenderValues(ch, userVals,
 		chartutil.ReleaseOptions{
 			Name:      "probe",
 			Namespace: "default",

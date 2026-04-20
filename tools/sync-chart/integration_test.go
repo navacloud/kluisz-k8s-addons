@@ -108,7 +108,7 @@ func TestIntegration_ExtractImages(t *testing.T) {
 
 			extractCtx, extractCancel := context.WithTimeout(context.Background(), integStepTimeout)
 			defer extractCancel()
-			images, err := extractImages(extractCtx, chartDir)
+			images, err := extractImages(extractCtx, chartDir, "")
 			if err != nil {
 				t.Fatalf("extractImages: %v", err)
 			}
@@ -151,7 +151,7 @@ func TestIntegration_PatchValues(t *testing.T) {
 
 			extractCtx, extractCancel := context.WithTimeout(context.Background(), integStepTimeout)
 			defer extractCancel()
-			images, err := extractImages(extractCtx, chartDir)
+			images, err := extractImages(extractCtx, chartDir, "")
 			if err != nil {
 				t.Fatalf("extractImages: %v", err)
 			}

@@ -1,0 +1,13 @@
+name: argocd
+description: "Continuous deployment via gitops"
+category: cd
+namespace: argocd
+chart: argo-cd
+originalRepo: "https://argoproj.github.io/argo-helm"
+isDefault: false
+defaultValues: {}
+versions:
+  - version: "9.5.0"
+    chartVersion: "9.5.0"
+    minK8sVersion: "1.31"
+    maxK8sVersion: "1.35"

@@ -5,6 +5,10 @@ namespace: kube-system
 chart: cilium
 originalRepo: "https://helm.cilium.io"
 isDefault: true
+defaultValues:
+  valuesYAML: |
+    operator:
+      replicas: 1
 versions:
   - version: "1.19.1"
     chartVersion: "1.19.1"

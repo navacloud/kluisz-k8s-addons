@@ -5,7 +5,15 @@ namespace: argocd
 chart: argo-cd
 originalRepo: "https://argoproj.github.io/argo-helm"
 isDefault: false
-defaultValues: {}
+defaultValues:
+  valuesYAML: |
+    redis:
+      image:
+        repository: docker.io/library/redis
+    redis-ha:
+      haproxy:
+        image:
+          repository: docker.io/library/haproxy
 versions:
   - version: "9.5.0"
     chartVersion: "9.5.0"

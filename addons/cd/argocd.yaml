@@ -1,6 +1,6 @@
 name: argocd
 description: "Continuous deployment via gitops"
-category: CD
+category: GITOPS
 namespace: argocd
 chart: argo-cd
 originalRepo: "https://argoproj.github.io/argo-helm"

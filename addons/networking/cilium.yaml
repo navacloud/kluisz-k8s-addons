@@ -9,6 +9,10 @@ defaultValues:
   valuesYAML: |
     operator:
       replicas: 1
+    ipam:
+      operator:
+        clusterPoolIPv4PodCIDRList:
+          - "10.244.0.0/16"
 versions:
   - version: "1.19.1"
     chartVersion: "1.19.1"

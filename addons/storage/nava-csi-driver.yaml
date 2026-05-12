@@ -1,0 +1,13 @@
+name: nava-csi-driver
+description: "Nava CSI driver for persistent volume provisioning and management"
+category: STORAGE
+namespace: kube-system
+chart: nava-csi-driver
+originalRepo: ""
+isDefault: true
+defaultValues: {}
+versions:
+  - version: "1.0.0"
+    chartVersion: "1.0.0"
+    minK8sVersion: "1.33"
+    maxK8sVersion: "1.35"

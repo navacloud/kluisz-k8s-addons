@@ -29,7 +29,7 @@ When an addon file is pushed to `main` with a new `chartVersion`, the CI pipelin
 | Monitoring | [metrics-server](addons/monitoring/metrics-server.yaml) | `metrics-server` | 3.12.0 | kubernetes-sigs |
 | Monitoring | [kube-state-metrics](addons/monitoring/kube-state-metrics.yaml) | `kube-state-metrics` | 7.0.0 | prometheus-community |
 | Security | [cert-manager](addons/security/cert-manager.yaml) | `cert-manager` | v1.20.0, v1.19.2 | quay.io/jetstack |
-| Storage | [kluisz-csi-driver](addons/storage/kluisz-csi-driver.yaml) | `kluisz-csi-driver` | v0.1.0-alpha.1 | internal |
+| Storage | [nava-csi-driver](addons/storage/nava-csi-driver.yaml) | `nava-csi-driver` | v1.0.0 | internal |
 | Other | [kluisz-cluster-autoscaler](addons/other/kluisz-cluster-autoscaler.yaml) | `kluisz-cluster-autoscaler` | 0.1.0 | internal |
 | Other | [kluisz-nodepool-provider](addons/other/kluisz-nodepool-provider.yaml) | `kluisz-nodepool-provider` | v0.1.0-rc1 | internal |
 
@@ -83,7 +83,7 @@ addons/
   monitoring/          kube-state-metrics, metrics-server
   networking/          cilium, coredns, traefik, kluisz-multus
   security/            cert-manager
-  storage/             kluisz-csi-driver
+  storage/             nava-csi-driver
   other/               kluisz-cluster-autoscaler, kluisz-nodepool-provider
 
 tools/sync-chart/      Go application (5-step sync pipeline)

@@ -25,6 +25,7 @@ When an addon file is pushed to `main` with a new `chartVersion`, the CI pipelin
 | Networking | [cilium](addons/networking/cilium.yaml) | `cilium` | 1.19.1 | helm.cilium.io |
 | Networking | [coredns](addons/networking/coredns.yaml) | `coredns` | 1.45.2 | ghcr.io/coredns |
 | Networking | [traefik](addons/networking/traefik.yaml) | `traefik` | 39.0.0 | ghcr.io/traefik |
+| Networking | [nava-lb-controller](addons/networking/nava-lb-controller.yaml) | `nava-lb-controller` | 0.2.0 | internal |
 | Networking | [kluisz-multus](addons/networking/kluisz-multus.yaml) | `kluisz-multus` | 0.1.0 | internal |
 | Monitoring | [metrics-server](addons/monitoring/metrics-server.yaml) | `metrics-server` | 3.12.0 | kubernetes-sigs |
 | Monitoring | [kube-state-metrics](addons/monitoring/kube-state-metrics.yaml) | `kube-state-metrics` | 7.0.0 | prometheus-community |

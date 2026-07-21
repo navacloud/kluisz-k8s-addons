@@ -218,7 +218,7 @@ func TestIntegration_RenderProducesValidYAML(t *testing.T) {
 
 			renderCtx, renderCancel := context.WithTimeout(context.Background(), integStepTimeout)
 			defer renderCancel()
-			manifest, err := renderChart(renderCtx, chartDir)
+			manifest, err := renderChart(renderCtx, chartDir, "")
 			if err != nil {
 				t.Fatalf("renderChart: %v", err)
 			}

@@ -1,0 +1,3 @@
+/sync-chart
+*.test
+.gobin/

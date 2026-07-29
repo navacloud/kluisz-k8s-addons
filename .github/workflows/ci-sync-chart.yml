@@ -1,0 +1,76 @@
+name: CI (sync-chart)
+
+# The addon workflows are path-filtered to addons/**, so nothing used to run on
+# changes under tools/sync-chart — including every Dependabot bump to the module
+# that builds and mirrors the charts. This is that missing check.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/sync-chart/**'
+      - '.github/workflows/ci-sync-chart.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/sync-chart/**'
+  schedule:
+    # Weekly, so newly published advisories against pinned deps surface on their
+    # own rather than waiting for someone to touch the module.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: tools/sync-chart
+
+jobs:
+  build:
+    name: Build, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/sync-chart/go.mod
+          cache-dependency-path: tools/sync-chart/go.sum
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+
+      - name: Compile integration tests
+        # Builds the tag-gated suite without running it — no network or registry
+        # needed. Catches signature drift between the tests and the pipeline,
+        # which is how renderChart's third parameter went unnoticed.
+        run: go test -tags integration -run '^$' ./...
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/sync-chart/go.mod
+          cache-dependency-path: tools/sync-chart/go.sum
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Scan for reachable vulnerabilities
+        # Reports call-path-reachable advisories, which is a much narrower set
+        # than Dependabot's manifest-level alerts. Non-blocking for now: four
+        # residual findings (openpgp, three containerd CRI issues) have no fixed
+        # version upstream and would fail every run. Flip to a hard failure once
+        # those clear.
+        continue-on-error: true
+        run: govulncheck ./...

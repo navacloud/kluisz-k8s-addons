@@ -5,11 +5,54 @@ on:
     branches: [main]
     paths:
       - 'addons/**/*.yaml'
+      # A schema change can invalidate addons that no one touched, so it has to
+      # trigger validation too — not just changes under addons/.
+      - 'schema/addon.schema.json'
+      - '.github/workflows/validate-addon-charts.yml'
 
 permissions:
   contents: read
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 0: Check every addon file against schema/addon.schema.json. Nothing
+  #         enforced the schema before, so addons/cd/argocd.yaml carried
+  #         category: GITOPS — not a value in the enum, and not a category the
+  #         cluster-manager knows about.
+  # ─────────────────────────────────────────────────────────────────────────────
+  schema:
+    name: Validate addon schema
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jsonschema
+        run: pip install --quiet jsonschema pyyaml
+
+      - name: Validate every addon definition
+        # Validates all addons, not just the changed ones — the whole catalog is
+        # small, and a schema change should surface every file it breaks.
+        run: |
+          python3 - <<'PY'
+          import glob, sys, json, yaml, jsonschema
+
+          schema = json.load(open("schema/addon.schema.json"))
+          failed = False
+
+          for path in sorted(glob.glob("addons/**/*.yaml", recursive=True)):
+              addon = yaml.safe_load(open(path))
+              try:
+                  jsonschema.validate(addon, schema)
+                  print(f"ok    {path}")
+              except jsonschema.ValidationError as e:
+                  failed = True
+                  where = "/".join(str(p) for p in e.absolute_path) or "(root)"
+                  print(f"FAIL  {path}: {where}: {e.message}")
+
+          sys.exit(1 if failed else 0)
+          PY
+
   # ─────────────────────────────────────────────────────────────────────────────
   # JOB 1: Diff the PR, find addon files with new chartVersions, build the
   #         matrix that the validate job fans out over.

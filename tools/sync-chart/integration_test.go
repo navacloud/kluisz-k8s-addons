@@ -218,7 +218,9 @@ func TestIntegration_RenderProducesValidYAML(t *testing.T) {
 
 			renderCtx, renderCancel := context.WithTimeout(context.Background(), integStepTimeout)
 			defer renderCancel()
-			manifest, err := renderChart(renderCtx, chartDir)
+			// No addon values — this case only checks that the chart's own
+			// defaults render into valid YAML.
+			manifest, err := renderChart(renderCtx, chartDir, "")
 			if err != nil {
 				t.Fatalf("renderChart: %v", err)
 			}

@@ -15,8 +15,8 @@
     },
     "category": {
       "type": "string",
-      "enum": ["NETWORKING", "SECURITY", "MONITORING", "STORAGE", "OTHER", "CD"],
-      "description": "Addon category, must match AddonCategory enum in cluster-manager"
+      "enum": ["NETWORKING", "SECURITY", "MONITORING", "STORAGE", "OTHER", "CD", "GITOPS"],
+      "description": "Addon category, must match AddonCategory enum in cluster-manager."
     },
     "namespace": {
       "type": "string",

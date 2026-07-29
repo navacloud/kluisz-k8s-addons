@@ -16,7 +16,7 @@
     "category": {
       "type": "string",
       "enum": ["NETWORKING", "SECURITY", "MONITORING", "STORAGE", "OTHER", "CD", "GITOPS"],
-      "description": "Addon category, must match AddonCategory enum in cluster-manager. GITOPS was adopted for argocd in #13 but never added here, so the schema and the catalog disagreed; CD is retained for backward compatibility."
+      "description": "Addon category, must match AddonCategory enum in cluster-manager."
     },
     "namespace": {
       "type": "string",

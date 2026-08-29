@@ -15,6 +15,10 @@ isDefault: false
 #   prometheus.enabled: "true"
 #   prometheus.servicemonitor.enabled: "false"
 #   global.leaderElection.namespace: "cert-manager"
+defaultValues:
+  valuesYAML: |
+    crds:
+      enabled: true
 versions:
   - version: "v1.20.0"
     chartVersion: "v1.20.0"
